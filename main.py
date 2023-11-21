@@ -11,6 +11,7 @@ import numpy as np
 import random
 from tqdm import tqdm
 from board_wrapper import show_qubic
+from time import sleep
 
 
 
@@ -19,6 +20,9 @@ class ModelAgent:
         self.model = model
     
     def get_action(self, state, player):
+        action = env.has_mate(state, player, 0)
+        if action != -1:
+            return action
         valid_actions = env.valid_actions(state, player)
         next_states = []
         for action in valid_actions:
@@ -57,6 +61,7 @@ def player_agents(a1, a2):
         player = 1- player
     if env.is_draw(b):
         return 0.5, 0.5
+    show_qubic(b)
     if 1 - player == 0:
         return 1, 0
     else:
@@ -92,15 +97,18 @@ def train(model: Discriminator, dataset: Dataset, config: Config):
 
     bar_epoch = tqdm(range(epoch), desc="[Epoch]")
     step = 0
+    model.train()
     for _ in bar_epoch:
         bar_batch = tqdm(dataset.generate_batch(), smoothing=0.01, leave=False, total=dataset.get_size() // config.batch_size)
         for board, label in bar_batch:
+            sleep(0.1)
             board = torch.FloatTensor(board)
             label = torch.reshape(torch.LongTensor(label), shape=(-1,))
+            onehot = F.one_hot(label, 3) * 0.7 + 0.1
+            predict = model(board)
             
-            predict = model.value(board)
-            
-            loss = F.cross_entropy(predict, label)
+            # loss = F.cross_entropy(predict, label)
+            loss = -torch.mean(onehot * torch.log(predict + 1e-8))
 
             model_optim.zero_grad()
             loss.backward()
@@ -109,25 +117,29 @@ def train(model: Discriminator, dataset: Dataset, config: Config):
             if step % config.log_n == 0:
                 writer.add_scalar("loss/cross_entropy", loss.item(), step)
             if step % config.eval_n == 0:
+                model.eval()
                 result = eval_func(model)
                 for key, value in result.items():
                     writer.add_scalar(f"eval/{key}", value, step)
+                model.train()
             if step % config.save_n == 0:
                 torch.save(model.state_dict(), "discriminator.pth")
             
-            bar_batch.set_postfix(loss=f"{loss.item():2.4f}")
+            bar_batch.set_postfix(loss=f"{loss.item():2.4f}", predict=predict[0])
     
             step += 1
 
 
 if __name__ == "__main__":
     config = Config(
-        n_block=5,
+        n_block=12,
         hidden_ch=128,
         batch_size=32,
         epoch=5,
         db_path="Q.db",
-        name="test"
+        name="test",
+        eval_n=500,
+        log_n=10
     )
 
     model = Discriminator(config)

@@ -26,30 +26,29 @@ class Discriminator(nn.Module):
         input:
             x: torch.Float([B, 128])
         """
-        x = F.relu(self.input(torch.reshape(x, (-1, 2, 4, 4, 4))))
-        x1 = self.sequential(x)
-        x2 = torch.reshape(x1, (-1, 128)) # [B, 128]
-        x3 = F.relu(self.linear(x2))  # [B, 3]
-        return torch.softmax(x3, dim=1)
+        x = self.value(x)
+        return torch.softmax(x, dim=1)
 
     def value(self, x):
         x = F.relu(self.input(torch.reshape(x, (-1, 2, 4, 4, 4))))
         x1 = self.sequential(x)
         x2 = torch.reshape(x1, (-1, 128)) # [B, 128]
         x3 = self.linear(x2)  # [B, 3]
-        return F.relu(x3)
+        return F.silu(x3)
 
 
 class Block(nn.Module):
     def __init__(self, config: Config):
         super().__init__()
+        self.norm = nn.BatchNorm3d(config.hidden_ch)
         self.conv1 = nn.Conv3d(in_channels=config.hidden_ch, out_channels=config.hidden_ch, kernel_size=(1, 1, 3), padding=(0, 0, 1))
         self.conv2 = nn.Conv3d(in_channels=config.hidden_ch, out_channels=config.hidden_ch, kernel_size=(1, 3, 1), padding=(0, 1, 0))
         self.conv3 = nn.Conv3d(in_channels=config.hidden_ch, out_channels=config.hidden_ch, kernel_size=(3, 1, 1), padding=(1, 0, 0))
         self.relu = nn.ReLU()
 
     def forward(self, input_x):
-        x = self.conv1(input_x)
+        x = self.norm(input_x)
+        x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
         return self.relu(x + input_x)
