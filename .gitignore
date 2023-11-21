@@ -1,0 +1,4 @@
+*.db
+tensorboard
+*.pth
+**/__pycache__
